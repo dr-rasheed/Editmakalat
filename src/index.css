@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-amiri: "Amiri", serif;
+}
+
+.quran-verse {
+  display: block;
+  font-family: "Amiri", "Scheherazade New", serif;
+  background-color: #ecfdf5; /* --quran-bg */
+  border: 1px solid #059669; /* --quran-border */
+  color: #2d3436; /* --text-primary */
+  font-size: 1.2em;
+  line-height: 2.6;
+  padding: 20px 25px;
+  margin: 30px 0;
+  text-align: center;
+  border-radius: 12px;
+  position: relative;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quran-verse:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(0,0,0,0.05);
+}
+
+.verse-ref {
+  display: block;
+  margin-top: 15px;
+  font-size: 0.75em;
+  color: #059669; /* --brand-color */
+  font-family: "Inter", sans-serif;
+  opacity: 0.8;
+  text-decoration: none;
+}
+
+.verse-ref:hover {
+  text-decoration: underline;
+}

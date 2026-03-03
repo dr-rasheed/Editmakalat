@@ -1,0 +1,5 @@
+{
+  "name": "Remix: Quranic Verse Detector",
+  "description": "A tool to detect and format Quranic verses in articles for web publishing.",
+  "requestFramePermissions": []
+}
