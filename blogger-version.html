@@ -105,6 +105,7 @@
                 .replace(/ئ/g, 'ي');
 
             result = result.replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06DC\u06DF-\u06E4\u06E7-\u06ED]/g, '');
+            result = result.replace(/ء/g, '');
             result = result.replace(/[^\u0621-\u064A\s]/g, '');
             return result.replace(/\s+/g, ' ').trim();
         }
@@ -117,6 +118,47 @@
         function convertArabicDigitsToEnglish(str) {
             return str.replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)]);
         }
+
+        const fetchWithRetry = async (url, retries = 3, delay = 1000) => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                    return await res.json();
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        };
+
+        const searchVerseByWords = async (wordsArr, wordCount, m) => {
+            const wordsToSearch = wordsArr.slice(Math.max(0, wordsArr.length - wordCount)).join(' ');
+            if (wordsToSearch.length < 10) return false;
+            try {
+                const searchRes = await fetchWithRetry(`https://api.quran.com/api/v4/search?q=${encodeURIComponent(wordsToSearch)}&size=5`);
+                const match = searchRes?.search?.results?.find(r => {
+                    if (r.text) {
+                        const normVerse = normalizeText(r.text);
+                        const searchWords = normalizeText(wordsToSearch).split(' ').filter(w => w.length >= 2);
+                        if (searchWords.length === 0) return false;
+                        let matchedWords = searchWords.filter(w => normVerse.includes(w)).length;
+                        return (matchedWords / searchWords.length) >= 0.85;
+                    }
+                    return false;
+                });
+                if (match) {
+                    const parts = match.verse_key.split(':');
+                    m.surahNum = parseInt(parts[0]);
+                    m.ayahNumStart = parseInt(parts[1]);
+                    m.ayahNum = parseInt(parts[1]);
+                    m.guessedSurah = true;
+                    return true;
+                }
+            } catch (e) { console.error(e); }
+            return false;
+        };
 
         // --- Components ---
 
@@ -198,7 +240,8 @@
             };
 
             const analyzeArticle = async (html) => {
-                let processedHtml = html;
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
                 
                 const fetchWithRetry = async (url, retries = 3, delay = 1000) => {
                     for (let i = 0; i < retries; i++) {
@@ -220,39 +263,31 @@
                     return `(?:${norm}|${withoutAl})`;
                 }).join('|');
 
-                // Pattern to find references
-                const refPatternSource = 
-                    `(` +
-                    `[\\(\\[\\{﴿][^\\)\\]\\}﴾]*?(\\d+|[\\u0660-\\u0669]+)(?:\\s*[:\\-]\\s*(\\d+|[\\u0660-\\u0669]+))?[^\\)\\]\\}﴾]*?[\\)\\]\\}﴾]` +
-                    `|` +
-                    `(?:سورة\\s+)?(${surahNamesRegexPart})\\s+(\\d+|[\\u0660-\\u0669]+)(?:\\s*[:\\-]\\s*(\\d+|[\\u0660-\\u0669]+))?` +
-                    `)`;
+                const refPattern = new RegExp(`(?:[\\(\\[\\{﴿][^\\)\\]\\}﴾]*?(\\d+|[\\u0660-\\u0669]+)(?:\\s*[:\\-]\\s*(\\d+|[\\u0660-\\u0669]+))?[^\\)\\]\\}﴾]*?[\\)\\]\\}﴾])|(?:(?:سورة\\s+)?(${surahNamesRegexPart})\\s+(\\d+|[\\u0660-\\u0669]+)(?:\\s*[:\\-]\\s*(\\d+|[\\u0660-\\u0669]+))?)`, 'g');
 
-                // Regex that matches EITHER an HTML tag OR our pattern
-                // We use a more robust pattern to catch tags and their contents if needed, but for now just tags
-                const combinedPattern = new RegExp(`(<[^>]+>)|${refPatternSource}`, 'g');
+                // Get all block-level elements
+                const blocks = doc.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6');
+                console.log("Found blocks:", blocks.length);
+                
+                for (const block of blocks) {
+                    const text = block.textContent.trim();
+                    if (!text) continue;
 
-                let match;
-                const matches = [];
-                while ((match = combinedPattern.exec(processedHtml)) !== null) {
-                    if (match[1]) continue; // It's an HTML tag, skip it
+                    refPattern.lastIndex = 0; // Reset regex
+                    const match = refPattern.exec(text);
+                    
+                    // Check if match exists AND it is at the start of the block
+                    if (!match || match.index !== 0) continue;
+                    
+                    // Check if the block ONLY contains the reference (with small tolerance for whitespace/punctuation)
+                    if (text.length > match[0].length + 5) continue; 
 
-                    // Determine which groups matched based on the offset of the combined pattern
-                    let num1Str = match[3] || match[6] || '';
-                    let num2Str = match[4] || match[7] || '';
-                    let surahNameInMatch = '';
+                    console.log("Found valid match in block:", text, match);
 
-                    if (match[3]) { // Bracketed case
-                        const inside = match[2];
-                        const sIndex = SURAH_NAMES.findIndex(name => {
-                            const normName = normalizeText(name);
-                            const withoutAl = normName.replace(/^ال/, '');
-                            return inside.includes(normName) || inside.includes(withoutAl);
-                        });
-                        if (sIndex !== -1) surahNameInMatch = SURAH_NAMES[sIndex];
-                    } else {
-                        surahNameInMatch = match[5];
-                    }
+                    // Extract surah/ayah
+                    let num1Str = match[1] || match[4] || '';
+                    let num2Str = match[2] || match[5] || '';
+                    let surahNameInMatch = match[3] || '';
 
                     const num1 = parseInt(convertArabicDigitsToEnglish(num1Str));
                     const num2 = num2Str ? parseInt(convertArabicDigitsToEnglish(num2Str)) : null;
@@ -273,152 +308,33 @@
                         ayahNum = num1;
                     }
 
-                    // Look backwards to see if we are inside a link or sup tag that we should include in the match
-                    let matchStartIndex = match.index;
-                    let matchEndIndex = match.index + match[0].length;
-                    
-                    const beforeMatch = processedHtml.substring(Math.max(0, matchStartIndex - 50), matchStartIndex);
-                    const afterMatch = processedHtml.substring(matchEndIndex, Math.min(processedHtml.length, matchEndIndex + 50));
-                    
-                    // Check for <a> tag wrapper
-                    if (beforeMatch.match(/<a[^>]*>$/i) && afterMatch.match(/^<\/a>/i)) {
-                        const aStart = beforeMatch.match(/<a[^>]*>$/i)[0];
-                        const aEnd = afterMatch.match(/^<\/a>/i)[0];
-                        matchStartIndex -= aStart.length;
-                        matchEndIndex += aEnd.length;
-                    }
-                    // Check for <sup> tag wrapper
-                    else if (beforeMatch.match(/<sup[^>]*>$/i) && afterMatch.match(/^<\/sup>/i)) {
-                        const supStart = beforeMatch.match(/<sup[^>]*>$/i)[0];
-                        const supEnd = afterMatch.match(/^<\/sup>/i)[0];
-                        matchStartIndex -= supStart.length;
-                        matchEndIndex += supEnd.length;
-                    }
+                    if (!surahNum || !ayahNum) continue;
 
-                    matches.push({
-                        fullMatch: match[0],
-                        index: matchStartIndex,
-                        length: matchEndIndex - matchStartIndex,
-                        surahNum,
-                        ayahNum
-                    });
-                }
-
-                const replacements = [];
-                
-                for (const m of matches) {
-                    if (!m.surahNum || !m.ayahNum) continue;
+                    console.log("Fetching verse:", surahNum, ayahNum);
 
                     try {
-                        const data = await fetchWithRetry(`https://api.alquran.cloud/v1/ayah/${m.surahNum}:${m.ayahNum}/quran-simple-clean`);
+                        const data = await fetchWithRetry(`https://api.alquran.cloud/v1/ayah/${surahNum}:${ayahNum}/quran-simple-clean`);
                         
                         if (data && data.code === 200) {
-                            const verseTextClean = normalizeText(data.data.text);
-                            const verseWords = verseTextClean.split(' ');
-                            
-                            const uthmaniData = await fetchWithRetry(`https://api.alquran.cloud/v1/ayah/${m.surahNum}:${m.ayahNum}/quran-uthmani`);
+                            const uthmaniData = await fetchWithRetry(`https://api.alquran.cloud/v1/ayah/${surahNum}:${ayahNum}/quran-uthmani`);
                             const uthmaniText = cleanUthmani(uthmaniData.data.text);
-
-                            const contextStartIndex = Math.max(0, m.index - 1500);
-                            const rawContext = processedHtml.substring(contextStartIndex, m.index);
+                            const surahName = SURAH_NAMES[surahNum - 1];
                             
-                            let startOfVerseIndex = -1;
-                            
-                            // Create a map of clean text to original HTML to find the exact start index
-                            let cleanContext = '';
-                            const indexMap = []; // Maps cleanContext index to rawContext index
-                            
-                            let inTag = false;
-                            for (let i = 0; i < rawContext.length; i++) {
-                                if (rawContext[i] === '<') inTag = true;
-                                
-                                if (!inTag) {
-                                    cleanContext += rawContext[i];
-                                    indexMap.push(i);
-                                }
-                                
-                                if (rawContext[i] === '>') inTag = false;
-                            }
-
-                            const contextTokens = cleanContext.split(/(\s+|[()\[\]{}﴿﴾«»"':\-,.!؟،؛*_])/);
-                            let currentDbIndex = verseWords.length - 1;
-                            let mismatches = 0;
-                            
-                            // We need to track the character position in cleanContext
-                            let currentCleanCharPos = cleanContext.length;
-                            
-                            for (let i = contextTokens.length - 1; i >= 0 && currentDbIndex >= 0 && mismatches < 15; i--) {
-                                const token = contextTokens[i];
-                                currentCleanCharPos -= token.length;
-                                
-                                const normToken = normalizeText(token);
-                                if (!normToken) continue;
-
-                                let matched = false;
-                                for (let offset = 0; offset < 4 && currentDbIndex - offset >= 0; offset++) {
-                                    const dbWord = verseWords[currentDbIndex - offset];
-                                    if (normToken === dbWord || dbWord.includes(normToken) || normToken.includes(dbWord)) {
-                                        matched = true;
-                                        currentDbIndex = currentDbIndex - offset - 1;
-                                        break;
-                                    }
-                                }
-
-                                if (matched) {
-                                    mismatches = 0;
-                                    // Map the clean character position back to the raw HTML position
-                                    if (currentCleanCharPos >= 0 && currentCleanCharPos < indexMap.length) {
-                                        startOfVerseIndex = indexMap[currentCleanCharPos];
-                                    }
-                                } else {
-                                    mismatches++;
-                                }
-                            }
-
-                            const surahName = SURAH_NAMES[m.surahNum - 1];
                             const replacementHtml = `
 <div class="quran-verse-box" dir="rtl">
     <div class="quran-font">${uthmaniText}</div>
-    <a href="https://quran.com/${m.surahNum}/${m.ayahNum}" class="verse-ref-link" target="_blank">[سورة ${surahName} : ${m.ayahNum}]</a>
+    <a href="https://quran.com/${surahNum}/${ayahNum}" class="verse-ref-link" target="_blank">[سورة ${surahName} : ${ayahNum}]</a>
 </div>`;
                             
-                            let absoluteStart = startOfVerseIndex !== -1 ? contextStartIndex + startOfVerseIndex : m.index;
-                            let absoluteEnd = m.index + m.length;
-
-                            // Safety check: Expand to include surrounding tags if we split them
-                            const beforeStart = processedHtml.substring(Math.max(0, absoluteStart - 30), absoluteStart);
-                            if (beforeStart.match(/<(strong|b|p|span|div)[^>]*>$/i)) {
-                                const tagMatch = beforeStart.match(/<(strong|b|p|span|div)[^>]*>$/i);
-                                absoluteStart -= tagMatch[0].length;
-                            }
-                            
-                            const afterEnd = processedHtml.substring(absoluteEnd, Math.min(processedHtml.length, absoluteEnd + 30));
-                            if (afterEnd.match(/^<\/(strong|b|p|span|div)>/i)) {
-                                const tagMatch = afterEnd.match(/^<\/(strong|b|p|span|div)>/i);
-                                absoluteEnd += tagMatch[0].length;
-                            }
-                            
-                            replacements.push({
-                                start: absoluteStart,
-                                end: absoluteEnd,
-                                content: replacementHtml
-                            });
+                            block.innerHTML = replacementHtml;
+                            console.log("Replaced match in block");
                         }
                     } catch (e) {
                         console.error("API Error:", e);
                     }
                 }
 
-                replacements.sort((a, b) => b.start - a.start);
-
-                let lastStart = Infinity;
-                for (const r of replacements) {
-                    if (r.end > lastStart) continue;
-                    processedHtml = processedHtml.substring(0, r.start) + r.content + processedHtml.substring(r.end);
-                    lastStart = r.start;
-                }
-
-                return processedHtml;
+                return doc.body.innerHTML;
             };
 
             const copyToClipboard = () => {

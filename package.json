@@ -2,11 +2,14 @@
   "name": "react-example",
   "private": true,
   "version": "0.0.0",
+  "homepage": "https://dr-rasheed.github.io/Editmakalat/",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "build": "vite build",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
@@ -21,6 +24,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "gh-pages": "^6.3.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.546.0",
     "mammoth": "^1.11.0",
