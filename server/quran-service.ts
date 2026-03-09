@@ -15,13 +15,26 @@ export async function initializeDatabase() {
 
     console.log('Fetching Quran data from Al Quran Cloud (Tanzil/Quran.com source)...');
     
+    const fetchWithRetry = async (url: string, retries = 3, delay = 1000) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          return await res.json();
+        } catch (e) {
+          if (i === retries - 1) throw e;
+          console.log(`Fetch failed, retrying in ${delay}ms... (${i + 1}/${retries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // Exponential backoff
+        }
+      }
+    };
+
     // Fetch Simple Text (for search)
-    const simpleRes = await fetch('http://api.alquran.cloud/v1/quran/quran-simple-clean');
-    const simpleData = await simpleRes.json();
+    const simpleData = await fetchWithRetry('http://api.alquran.cloud/v1/quran/quran-simple-clean');
     
     // Fetch Uthmani Text (for display)
-    const uthmaniRes = await fetch('http://api.alquran.cloud/v1/quran/quran-uthmani');
-    const uthmaniData = await uthmaniRes.json();
+    const uthmaniData = await fetchWithRetry('http://api.alquran.cloud/v1/quran/quran-uthmani');
 
     if (simpleData.code !== 200 || uthmaniData.code !== 200) {
       throw new Error('Failed to fetch data from Al Quran Cloud');

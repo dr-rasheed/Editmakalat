@@ -1,0 +1,38 @@
+        body {
+            font-family: 'Inter', 'ui-sans-serif', 'system-ui', sans-serif;
+            background-color: #f8fafc;
+        }
+        .quran-font {
+            font-family: 'Amiri', 'Scheherazade New', serif;
+        }
+        /* Styles for the generated Quran boxes */
+        .quran-verse {
+            display: block;
+            font-family: 'Amiri Quran', 'Amiri', serif !important;
+            background-color: #ecfdf5; /* var(--quran-bg) */
+            border: 1px solid #059669; /* var(--quran-border) */
+            color: #2d3436; /* var(--text-primary) */
+            font-size: 1.2em;
+            line-height: 2.6;
+            padding: 20px 25px;
+            margin: 30px 0;
+            text-align: center;
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        }
+        .verse-ref {
+            display: block;
+            margin-top: 15px;
+            font-size: 0.75em;
+            color: #0c4128; /* var(--brand-color) */
+            font-family: 'Readex Pro', sans-serif;
+            opacity: 0.8;
+            text-decoration: none;
+        }
+        .verse-ref:hover {
+            text-decoration: underline;
+        }
+        /* Hide scrollbar for clean look */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

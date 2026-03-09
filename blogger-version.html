@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>كاشف ومنسق الآيات القرآنية - نسخة بلوجر</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@400;500;600&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Mammoth.js for DOCX processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    
+    <!-- React & Babel for Browser JSX -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', 'ui-sans-serif', 'system-ui', sans-serif;
+            background-color: #f8fafc;
+        }
+        .quran-font {
+            font-family: 'Amiri', 'Scheherazade New', serif;
+        }
+        /* Styles for the generated Quran boxes */
+        .quran-verse-box {
+            display: block;
+            font-family: "Amiri", "Scheherazade New", serif;
+            background-color: #ecfdf5;
+            border: 1px solid #059669;
+            color: #2d3436;
+            font-size: 1.25rem;
+            line-height: 2.6;
+            padding: 20px 25px;
+            margin: 30px 0;
+            text-align: center;
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        }
+        .verse-ref-link {
+            display: block;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: #059669;
+            font-family: 'Inter', sans-serif;
+            opacity: 0.8;
+            text-decoration: none;
+        }
+        .verse-ref-link:hover {
+            text-decoration: underline;
+        }
+        /* Hide scrollbar for clean look */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Utilities ---
+        const SURAH_NAMES = [
+            "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس",
+            "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه",
+            "الأنبياء", "الحج", "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم",
+            "لقمان", "السجدة", "الأحزاب", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر",
+            "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف", "محمد", "الفتح", "الحجرات", "ق",
+            "الذاريات", "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة", "الحشر", "الممتحنة",
+            "الصف", "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحريم", "الملك", "القلم", "الحاقة", "المعارج",
+            "نوح", "الجن", "المزمل", "المدثر", "القيامة", "الإنسان", "المرسلات", "النبأ", "النازعات", "عبس",
+            "التكوير", "الانفطار", "المطففين", "الانشقاق", "البروج", "الطارق", "الأعلى", "الغاشية", "الفجر", "البلد",
+            "الشمس", "الليل", "الضحى", "الشرح", "التين", "العلق", "القدر", "البينة", "الزلزلة", "العاديات",
+            "القارعة", "التكاثر", "العصر", "الهمزة", "الفيل", "قريش", "الماعون", "الكوثر", "الكافرون", "النصر",
+            "المسد", "الإخلاص", "الفلق", "الناس"
+        ];
+
+        function normalizeText(text) {
+            if (!text) return '';
+            let normalized = text
+                .replace(/\u0670/g, 'ا')
+                .replace(/\u06E5/g, 'ي')
+                .replace(/\u06E6/g, 'و')
+                .replace(/\u0671/g, 'ا')
+                .replace(/\u06CC/g, 'ي')
+                .replace(/\u06C1/g, 'ه');
+            
+            let result = normalized
+                .replace(/(آ|إ|أ|ٱ)/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي')
+                .replace(/ؤ/g, 'و')
+                .replace(/ئ/g, 'ي');
+
+            result = result.replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06DC\u06DF-\u06E4\u06E7-\u06ED]/g, '');
+            result = result.replace(/[^\u0621-\u064A\s]/g, '');
+            return result.replace(/\s+/g, ' ').trim();
+        }
+
+        function cleanUthmani(text) {
+            if (!text) return '';
+            return text.replace(/\u0640/g, '');
+        }
+
+        function convertArabicDigitsToEnglish(str) {
+            return str.replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)]);
+        }
+
+        // --- Components ---
+
+        const Icons = {
+            FileText: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>,
+            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>,
+            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Copy: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+            AlertCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        };
+
+        const App = () => {
+            const [inputHtml, setInputHtml] = useState('');
+            const [analyzedHtml, setAnalyzedHtml] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [fileLoading, setFileLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [copySuccess, setCopySuccess] = useState(false);
+            const fileInputRef = useRef(null);
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files ? event.target.files[0] : null;
+                if (!file) return;
+
+                if (!file.name.toLowerCase().endsWith('.docx')) {
+                    setError('عذراً، هذا الملف غير مدعوم. يرجى رفع ملف بصيغة Word (.docx) فقط.');
+                    return;
+                }
+
+                setFileLoading(true);
+                setError('');
+
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const arrayBuffer = e.target.result;
+                    try {
+                        const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                        
+                        if (result.messages && result.messages.length > 0) {
+                            console.warn("ملاحظات قراءة الملف:", result.messages);
+                        }
+                        
+                        if (!result.value || result.value.trim() === '') {
+                            setError('الملف فارغ أو لا يمكن قراءة محتواه. تأكد من أن الملف غير تالف.');
+                        } else {
+                            setInputHtml(result.value);
+                        }
+                    } catch (err) {
+                        setError('فشل في قراءة ملف Word. قد يكون الملف تالفاً أو يحتوي على تنسيقات غير مدعومة.');
+                        console.error("خطأ في قراءة الملف:", err);
+                    } finally {
+                        setFileLoading(false);
+                    }
+                };
+                
+                reader.onerror = () => {
+                    setError('حدث خطأ أثناء قراءة الملف من جهازك.');
+                    setFileLoading(false);
+                };
+                
+                reader.readAsArrayBuffer(file);
+            };
+
+            const handleAnalyze = async () => {
+                if (!inputHtml.trim()) return;
+                setLoading(true);
+                setError('');
+                try {
+                    const result = await analyzeArticle(inputHtml);
+                    setAnalyzedHtml(result);
+                } catch (err) {
+                    setError('حدث خطأ أثناء تحليل النص. يرجى التأكد من اتصالك بالإنترنت والمحاولة مرة أخرى.');
+                    console.error(err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const analyzeArticle = async (html) => {
+                let processedHtml = html;
+                
+                const fetchWithRetry = async (url, retries = 3, delay = 1000) => {
+                    for (let i = 0; i < retries; i++) {
+                        try {
+                            const res = await fetch(url);
+                            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                            return await res.json();
+                        } catch (e) {
+                            if (i === retries - 1) throw e;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            delay *= 2;
+                        }
+                    }
+                };
+
+                const surahNamesRegexPart = SURAH_NAMES.map(s => {
+                    const norm = normalizeText(s);
+                    const withoutAl = norm.replace(/^ال/, '');
+                    return `(?:${norm}|${withoutAl})`;
+                }).join('|');
+
+                // Pattern to find references
+                const refPatternSource = 
+                    `(` +
+                    `[\\(\\[\\{﴿][^\\)\\]\\}﴾]*?(\\d+|[\\u0660-\\u0669]+)(?:\\s*[:\\-]\\s*(\\d+|[\\u0660-\\u0669]+))?[^\\)\\]\\}﴾]*?[\\)\\]\\}﴾]` +
+                    `|` +
+                    `(?:سورة\\s+)?(${surahNamesRegexPart})\\s+(\\d+|[\\u0660-\\u0669]+)(?:\\s*[:\\-]\\s*(\\d+|[\\u0660-\\u0669]+))?` +
+                    `)`;
+
+                // Regex that matches EITHER an HTML tag OR our pattern
+                // We use a more robust pattern to catch tags and their contents if needed, but for now just tags
+                const combinedPattern = new RegExp(`(<[^>]+>)|${refPatternSource}`, 'g');
+
+                let match;
+                const matches = [];
+                while ((match = combinedPattern.exec(processedHtml)) !== null) {
+                    if (match[1]) continue; // It's an HTML tag, skip it
+
+                    // Determine which groups matched based on the offset of the combined pattern
+                    let num1Str = match[3] || match[6] || '';
+                    let num2Str = match[4] || match[7] || '';
+                    let surahNameInMatch = '';
+
+                    if (match[3]) { // Bracketed case
+                        const inside = match[2];
+                        const sIndex = SURAH_NAMES.findIndex(name => {
+                            const normName = normalizeText(name);
+                            const withoutAl = normName.replace(/^ال/, '');
+                            return inside.includes(normName) || inside.includes(withoutAl);
+                        });
+                        if (sIndex !== -1) surahNameInMatch = SURAH_NAMES[sIndex];
+                    } else {
+                        surahNameInMatch = match[5];
+                    }
+
+                    const num1 = parseInt(convertArabicDigitsToEnglish(num1Str));
+                    const num2 = num2Str ? parseInt(convertArabicDigitsToEnglish(num2Str)) : null;
+                    
+                    let surahNum = null;
+                    let ayahNum = null;
+                    
+                    if (surahNameInMatch) {
+                        const sIndex = SURAH_NAMES.findIndex(n => n === surahNameInMatch);
+                        if (sIndex !== -1) {
+                            surahNum = sIndex + 1;
+                            ayahNum = num2 !== null ? num2 : num1;
+                        }
+                    } else if (num2 !== null) {
+                        surahNum = num1;
+                        ayahNum = num2;
+                    } else {
+                        ayahNum = num1;
+                    }
+
+                    // Look backwards to see if we are inside a link or sup tag that we should include in the match
+                    let matchStartIndex = match.index;
+                    let matchEndIndex = match.index + match[0].length;
+                    
+                    const beforeMatch = processedHtml.substring(Math.max(0, matchStartIndex - 50), matchStartIndex);
+                    const afterMatch = processedHtml.substring(matchEndIndex, Math.min(processedHtml.length, matchEndIndex + 50));
+                    
+                    // Check for <a> tag wrapper
+                    if (beforeMatch.match(/<a[^>]*>$/i) && afterMatch.match(/^<\/a>/i)) {
+                        const aStart = beforeMatch.match(/<a[^>]*>$/i)[0];
+                        const aEnd = afterMatch.match(/^<\/a>/i)[0];
+                        matchStartIndex -= aStart.length;
+                        matchEndIndex += aEnd.length;
+                    }
+                    // Check for <sup> tag wrapper
+                    else if (beforeMatch.match(/<sup[^>]*>$/i) && afterMatch.match(/^<\/sup>/i)) {
+                        const supStart = beforeMatch.match(/<sup[^>]*>$/i)[0];
+                        const supEnd = afterMatch.match(/^<\/sup>/i)[0];
+                        matchStartIndex -= supStart.length;
+                        matchEndIndex += supEnd.length;
+                    }
+
+                    matches.push({
+                        fullMatch: match[0],
+                        index: matchStartIndex,
+                        length: matchEndIndex - matchStartIndex,
+                        surahNum,
+                        ayahNum
+                    });
+                }
+
+                const replacements = [];
+                
+                for (const m of matches) {
+                    if (!m.surahNum || !m.ayahNum) continue;
+
+                    try {
+                        const data = await fetchWithRetry(`https://api.alquran.cloud/v1/ayah/${m.surahNum}:${m.ayahNum}/quran-simple-clean`);
+                        
+                        if (data && data.code === 200) {
+                            const verseTextClean = normalizeText(data.data.text);
+                            const verseWords = verseTextClean.split(' ');
+                            
+                            const uthmaniData = await fetchWithRetry(`https://api.alquran.cloud/v1/ayah/${m.surahNum}:${m.ayahNum}/quran-uthmani`);
+                            const uthmaniText = cleanUthmani(uthmaniData.data.text);
+
+                            const contextStartIndex = Math.max(0, m.index - 1500);
+                            const rawContext = processedHtml.substring(contextStartIndex, m.index);
+                            
+                            let startOfVerseIndex = -1;
+                            
+                            // Create a map of clean text to original HTML to find the exact start index
+                            let cleanContext = '';
+                            const indexMap = []; // Maps cleanContext index to rawContext index
+                            
+                            let inTag = false;
+                            for (let i = 0; i < rawContext.length; i++) {
+                                if (rawContext[i] === '<') inTag = true;
+                                
+                                if (!inTag) {
+                                    cleanContext += rawContext[i];
+                                    indexMap.push(i);
+                                }
+                                
+                                if (rawContext[i] === '>') inTag = false;
+                            }
+
+                            const contextTokens = cleanContext.split(/(\s+|[()\[\]{}﴿﴾«»"':\-,.!؟،؛*_])/);
+                            let currentDbIndex = verseWords.length - 1;
+                            let mismatches = 0;
+                            
+                            // We need to track the character position in cleanContext
+                            let currentCleanCharPos = cleanContext.length;
+                            
+                            for (let i = contextTokens.length - 1; i >= 0 && currentDbIndex >= 0 && mismatches < 15; i--) {
+                                const token = contextTokens[i];
+                                currentCleanCharPos -= token.length;
+                                
+                                const normToken = normalizeText(token);
+                                if (!normToken) continue;
+
+                                let matched = false;
+                                for (let offset = 0; offset < 4 && currentDbIndex - offset >= 0; offset++) {
+                                    const dbWord = verseWords[currentDbIndex - offset];
+                                    if (normToken === dbWord || dbWord.includes(normToken) || normToken.includes(dbWord)) {
+                                        matched = true;
+                                        currentDbIndex = currentDbIndex - offset - 1;
+                                        break;
+                                    }
+                                }
+
+                                if (matched) {
+                                    mismatches = 0;
+                                    // Map the clean character position back to the raw HTML position
+                                    if (currentCleanCharPos >= 0 && currentCleanCharPos < indexMap.length) {
+                                        startOfVerseIndex = indexMap[currentCleanCharPos];
+                                    }
+                                } else {
+                                    mismatches++;
+                                }
+                            }
+
+                            const surahName = SURAH_NAMES[m.surahNum - 1];
+                            const replacementHtml = `
+<div class="quran-verse-box" dir="rtl">
+    <div class="quran-font">${uthmaniText}</div>
+    <a href="https://quran.com/${m.surahNum}/${m.ayahNum}" class="verse-ref-link" target="_blank">[سورة ${surahName} : ${m.ayahNum}]</a>
+</div>`;
+                            
+                            let absoluteStart = startOfVerseIndex !== -1 ? contextStartIndex + startOfVerseIndex : m.index;
+                            let absoluteEnd = m.index + m.length;
+
+                            // Safety check: Expand to include surrounding tags if we split them
+                            const beforeStart = processedHtml.substring(Math.max(0, absoluteStart - 30), absoluteStart);
+                            if (beforeStart.match(/<(strong|b|p|span|div)[^>]*>$/i)) {
+                                const tagMatch = beforeStart.match(/<(strong|b|p|span|div)[^>]*>$/i);
+                                absoluteStart -= tagMatch[0].length;
+                            }
+                            
+                            const afterEnd = processedHtml.substring(absoluteEnd, Math.min(processedHtml.length, absoluteEnd + 30));
+                            if (afterEnd.match(/^<\/(strong|b|p|span|div)>/i)) {
+                                const tagMatch = afterEnd.match(/^<\/(strong|b|p|span|div)>/i);
+                                absoluteEnd += tagMatch[0].length;
+                            }
+                            
+                            replacements.push({
+                                start: absoluteStart,
+                                end: absoluteEnd,
+                                content: replacementHtml
+                            });
+                        }
+                    } catch (e) {
+                        console.error("API Error:", e);
+                    }
+                }
+
+                replacements.sort((a, b) => b.start - a.start);
+
+                let lastStart = Infinity;
+                for (const r of replacements) {
+                    if (r.end > lastStart) continue;
+                    processedHtml = processedHtml.substring(0, r.start) + r.content + processedHtml.substring(r.end);
+                    lastStart = r.start;
+                }
+
+                return processedHtml;
+            };
+
+            const copyToClipboard = () => {
+                navigator.clipboard.writeText(analyzedHtml).then(() => {
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                });
+            };
+
+            return (
+                <div className="min-h-screen p-4 md:p-8">
+                    <div className="max-w-5xl mx-auto space-y-6">
+                        
+                        {/* Header */}
+                        <header className="text-center space-y-2 mb-8">
+                            <h1 className="text-3xl md:text-4xl font-bold text-slate-800">كاشف ومنسق الآيات القرآنية</h1>
+                            <p className="text-slate-500">قم بلصق مقالك وسنقوم باكتشاف الآيات وتنسيقها لك تلقائياً</p>
+                        </header>
+
+                        {/* Main Content */}
+                        <div className="grid grid-cols-1 gap-6">
+                            
+                            {/* Input Area */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                                        <Icons.FileText />
+                                        محتوى المقال
+                                    </h2>
+                                    <div className="flex flex-wrap gap-2">
+                                        <input 
+                                            type="file" 
+                                            ref={fileInputRef}
+                                            onChange={handleFileUpload}
+                                            accept=".docx"
+                                            className="hidden"
+                                        />
+                                        <button 
+                                            onClick={() => fileInputRef.current.click()}
+                                            disabled={fileLoading}
+                                            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm font-medium"
+                                        >
+                                            {fileLoading ? (
+                                                <div className="w-4 h-4 border-2 border-slate-400 border-t-slate-600 rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Icons.Upload />
+                                            )}
+                                            رفع ملف Word (.docx)
+                                        </button>
+                                        <button 
+                                            onClick={handleAnalyze}
+                                            disabled={loading || !inputHtml.trim()}
+                                            className={`px-6 py-2 rounded-xl font-medium transition-all flex items-center gap-2 ${
+                                                loading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
+                                            }`}
+                                        >
+                                            {loading ? (
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                                                    جاري التحليل...
+                                                </span>
+                                            ) : (
+                                                <React.Fragment>
+                                                    <Icons.Sparkles />
+                                                    تحليل وتنسيق
+                                                </React.Fragment>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="relative">
+                                    <textarea 
+                                        className="w-full h-64 p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none text-slate-700 leading-relaxed"
+                                        placeholder="ألصق نص المقال هنا أو قم برفع ملف Word..."
+                                        value={inputHtml}
+                                        onChange={(e) => setInputHtml(e.target.value)}
+                                    ></textarea>
+                                    {fileLoading && (
+                                        <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center rounded-xl">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                                                <span className="text-sm font-medium text-slate-600">جاري قراءة الملف...</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Result Area */}
+                            {analyzedHtml && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-lg font-semibold flex items-center gap-2">
+                                            <Icons.Eye />
+                                            المعاينة والنتيجة
+                                        </h2>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={copyToClipboard}
+                                                className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-2 text-sm font-medium"
+                                            >
+                                                {copySuccess ? (
+                                                    <React.Fragment><Icons.Check /> تم النسخ</React.Fragment>
+                                                ) : (
+                                                    <React.Fragment><Icons.Copy /> نسخ كود HTML</React.Fragment>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div 
+                                        className="prose prose-slate max-w-none p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 overflow-auto max-h-[600px]"
+                                        dangerouslySetInnerHTML={{ __html: analyzedHtml }}
+                                    ></div>
+                                </div>
+                            )}
+
+                            {error && (
+                                <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-2 border border-red-100">
+                                    <Icons.AlertCircle />
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <footer className="text-center text-slate-400 text-sm py-8">
+                            نسخة الويب المستقلة لمدونات بلوجر &copy; 2024
+                        </footer>
+                    </div>
+                </div>
+            );
+        };
+
+        // Initialize
+        const Root = () => {
+            return <App />;
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Root />);
+    </script>
+</body>
+</html>
